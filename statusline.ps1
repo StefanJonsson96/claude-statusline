@@ -22,9 +22,9 @@ function Format-Limit($window) {
 $cwd = if ($data.workspace.current_dir) { $data.workspace.current_dir } else { $data.cwd }
 if ($cwd) { $segments.Add("`u{1F4C1} $(Split-Path $cwd -Leaf)") }
 
-# Git branch + ahead/behind/in sync
+# Git branch + ahead/behind/in sync + working tree
 if ($cwd -and (Test-Path $cwd)) {
-    $status = git -C $cwd --no-optional-locks status --porcelain=v2 --branch --untracked-files=no 2>$null
+    $status = git -C $cwd --no-optional-locks status --porcelain=v2 --branch 2>$null
     if ($LASTEXITCODE -eq 0 -and $status) {
         $head = ($status | Where-Object { $_ -like '# branch.head *' }) -replace '^# branch.head ', ''
         if ($head -eq '(detached)') { $head = (git -C $cwd rev-parse --short HEAD 2>$null) }
@@ -40,6 +40,27 @@ if ($cwd -and (Test-Path $cwd)) {
                 ) -join ' ')
             })
         }
+
+        $modified = $added = $deleted = $untracked = $conflicted = 0
+        foreach ($line in $status) {
+            if     ($line -match '^\? ') { $untracked++ }
+            elseif ($line -match '^u ')  { $conflicted++ }
+            elseif ($line -match '^[12] (.)(.) ') {
+                $x, $y = $Matches[1], $Matches[2]
+                if     ($x -eq 'A' -or $y -eq 'A') { $added++ }
+                elseif ($x -eq 'D' -or $y -eq 'D') { $deleted++ }
+                else                               { $modified++ }
+            }
+        }
+        $tree = (@(
+            if ($modified)   { "~$modified" }
+            if ($added)      { "+$added" }
+            if ($deleted)    { "-$deleted" }
+            if ($untracked)  { "?$untracked" }
+            if ($conflicted) { "!$conflicted" }
+        ) -join ' ')
+        if ($tree) { $git += " $tree" }
+
         $segments.Add($git)
     }
 }
