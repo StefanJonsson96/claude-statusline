@@ -66,7 +66,9 @@ Then restart Windows Terminal. Add `-WhatIf` to see what it would change first.
 
 1. Installs `fonts/StatuslineIcons.ttf` for your user. No admin needed. Windows Terminal only uses installed
    fonts, so the logo can't be loaded straight from this folder.
-2. Sets `statusLine` in `~/.claude/settings.json` to run `statusline.ps1` from this folder, refreshing every second.
+2. Sets `statusLine` in `~/.claude/settings.json` to run `statusline.ps1` from this folder, refreshing every 2 seconds.
+   A run takes about half a second, mostly pwsh startup. At a 1 second refresh a busy PC pushes runs past the
+   interval and the status line stops updating.
 3. Adds `Statusline Icons` as a fallback font to the Windows Terminal default profile
    (`"face": "CaskaydiaMono Nerd Font, Statusline Icons"`). It only supplies the Spotify logo; your text font doesn't change.
 

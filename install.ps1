@@ -66,7 +66,8 @@ $script = (Join-Path $PSScriptRoot 'statusline.ps1') -replace '\\', '/'
 $statusLine = [ordered]@{
     type            = 'command'
     command         = "pwsh -NoProfile -ExecutionPolicy Bypass -File `"$script`""
-    refreshInterval = 1
+    # Each run takes about half a second (pwsh startup); 1 second leaves no headroom under load
+    refreshInterval = 2
 }
 if ($settings['statusLine']) { Write-Host "  replacing: $($settings['statusLine'] | ConvertTo-Json -Compress)" }
 Backup $ClaudeSettings
