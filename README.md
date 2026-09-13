@@ -34,9 +34,15 @@ function cc { claude @args }
 
 **Line 2: Spotify** (only while the Spotify desktop app has a track loaded)
 
-Green Spotify logo, `artist - title position/length`, and a pause icon when paused. It reads what Windows
-already knows about the playing media, so there is no Spotify login or API key. That also means it only
+Green Spotify logo, `artist - title position/length`, a pause icon when paused, and a speaker icon with the
+device name when another device plays it (Spotify Connect, e.g. `[speaker] OTHER-PC`). Nothing is shown when this PC plays it.
+
+It reads what Windows already knows, so there is no Spotify login or API key. That also means it only
 gets the first artist and no playlist name.
+
+The device name comes from the "Playing on ..." text in the Spotify window, matched in English and Swedish.
+For another app language, add its prefix to `$devicePattern` in `spotify-watch.ps1`. Whether this PC plays it
+is detected from Windows audio output, so that part works in any language.
 
 ## Requirements
 
@@ -69,8 +75,8 @@ Because the setting points at this folder, `git pull` updates the status line.
 ## How the Spotify line works
 
 `statusline.ps1` starts `spotify-watch.ps1` in a hidden Windows PowerShell 5.1 process (PowerShell 7 can't
-read the Windows media session). The watcher checks Spotify four times a second and writes the track to
-`%TEMP%\claude-spotify.txt`; the status line reads that file and counts the time forward itself. The watcher
+read the Windows media session). The watcher checks Spotify four times a second, checks which device plays it once a
+second, and writes the result to `%TEMP%\claude-spotify.txt`; the status line reads that file and counts the time forward itself. The watcher
 exits 30 seconds after the status line stops running.
 
 It seems to use 0.1-0.3% CPU and around 35-40 MB RAM (Intel Core i5-13400F, 10 cores / 16 threads, 32 GB DDR5-4800).

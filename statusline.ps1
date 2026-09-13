@@ -100,6 +100,8 @@ if ($spotify.Count -ge 6) {
     $clock = { param($ms) $t = [TimeSpan]::FromMilliseconds($ms); '{0}:{1:00}' -f [math]::Floor($t.TotalMinutes), $t.Seconds }
     # U+E100 is the Spotify logo from fonts/StatuslineIcons.ttf (Nerd Font U+F1BC nudged to line up with the folder emoji)
     $nowPlaying = "`e[38;2;30;215;96m`u{E100}`e[0m  $artist - $title $(& $clock $position)/$(& $clock $length)$(if ($status -eq 'Paused') { " `u{F04C}" })"
+    # Remote device that plays it; the watcher leaves this empty while this PC plays
+    if ($spotify.Count -ge 7 -and $spotify[6]) { $nowPlaying += "  `u{F028} $($spotify[6])" }
 }
 
 # Line 1: session info. Line 2: Spotify, on its own row so long titles have room.
