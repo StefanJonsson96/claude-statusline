@@ -3,7 +3,7 @@
 A PowerShell 7 status line for [Claude Code](https://code.claude.com) on Windows, with a now-playing line for Spotify.
 
 ```
-📁 my-repo  [branch] main ≡  ☁️ My Subscription  🕐 21:58:56  🧠 ctx: 11%  🔋 5h: 47% (0h50m)  📊 7d: 13% (3d7h)  🔄 cc -r <session id>
+📁 my-repo  [branch] main ≡ ~2 ?1  ☁️ My Subscription  🕐 21:58:56  🧠 ctx: 11%  🔋 5h: 47% (0h50m)  📊 7d: 13% (3d7h)  🔄 cc -r <session id>
 [spotify]  KAROL G - LATINA FOREVA 1:42/2:39
 ```
 
@@ -16,7 +16,7 @@ A PowerShell 7 status line for [Claude Code](https://code.claude.com) on Windows
 | Icon | Shows |
 | --- | --- |
 | 📁 | Current folder |
-| Nerd Font branch (`U+E0A0`) | Git branch, then `↑n` ahead / `↓n` behind / `≡` in sync with its upstream |
+| Nerd Font branch (`U+E0A0`) | Git branch, then `↑n` ahead / `↓n` behind / `≡` in sync with its upstream, then the working tree: `~n` modified, `+n` added, `-n` deleted, `?n` untracked, `!n` conflicted. Each count is left out when it is zero, so a clean tree shows nothing after the branch. |
 | ☁️ | Default Azure subscription, read from `~/.azure/azureProfile.json` (hidden without the Azure CLI) |
 | 🕐 | Time of Claude's last reply |
 | 🧠 | Context window used |
