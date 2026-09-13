@@ -75,7 +75,16 @@ if (Test-Path $azProfile) {
 # Timestamp of last assistant output (from the transcript tail)
 $last = $null
 if ($data.transcript_path -and (Test-Path $data.transcript_path)) {
-    $tail = Get-Content $data.transcript_path -Tail 50
+    # Read only the last 256 KB; Get-Content -Tail is slow enough to matter at a 1-2 second refresh
+    $stream = [IO.File]::Open($data.transcript_path, 'Open', 'Read', 'ReadWrite, Delete')
+    try {
+        $count = [int][math]::Min($stream.Length, 256KB)
+        [void]$stream.Seek(-$count, 'End')
+        $buffer = [byte[]]::new($count)
+        $read = 0
+        while ($read -lt $count) { $read += $stream.Read($buffer, $read, $count - $read) }
+    } finally { $stream.Dispose() }
+    $tail = [Text.Encoding]::UTF8.GetString($buffer) -split "`n"
     for ($i = $tail.Count - 1; $i -ge 0; $i--) {
         if ($tail[$i] -match '"type":"assistant"' -and $tail[$i] -match '"timestamp":"([^"]+)"') {
             $last = ([datetime]::Parse($Matches[1], $null, 'RoundtripKind')).ToLocalTime()
