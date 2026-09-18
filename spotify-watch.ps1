@@ -13,9 +13,12 @@ $asTask = $null
 foreach ($m in [System.WindowsRuntimeSystemExtensions].GetMethods()) {
     if ($m.Name -eq 'AsTask' -and $m.GetParameters().Count -eq 1 -and $m.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1') { $asTask = $m; break }
 }
+$pending = $null
 function Await($op, [type]$type) {
     $task = $asTask.MakeGenericMethod($type).Invoke($null, @($op))
-    if ($task.Wait(2000)) { $task.Result } else { throw 'WinRT call timed out' }
+    if ($task.Wait(2000)) { return $task.Result }
+    $script:pending = $task
+    throw 'WinRT call timed out'
 }
 
 # Core Audio: is any Spotify process sending sound to an output device on this PC?
@@ -97,6 +100,8 @@ $tick     = 0
 while (([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($alive)).TotalSeconds -lt 30) {
     $state = ''
     try {
+        if ($pending -and -not $pending.IsCompleted) { throw 'previous WinRT call still pending' }
+        $pending = $null
         # A fresh manager each tick: a long-lived one keeps serving the track it first saw
         $manager = Await ($managerType::RequestAsync()) $managerType
         foreach ($session in $manager.GetSessions()) {
@@ -140,10 +145,12 @@ while (([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($alive)).TotalSecond
     } catch { $state = '' }
 
     if ($state -ne $previous) {
-        $tmp = "$cache.tmp"
-        [IO.File]::WriteAllText($tmp, $state)
-        if ([IO.File]::Exists($cache)) { [IO.File]::Replace($tmp, $cache, [NullString]::Value) } else { [IO.File]::Move($tmp, $cache) }
-        $previous = $state
+        try {
+            $tmp = "$cache.tmp"
+            [IO.File]::WriteAllText($tmp, $state)
+            if ([IO.File]::Exists($cache)) { [IO.File]::Replace($tmp, $cache, [NullString]::Value) } else { [IO.File]::Move($tmp, $cache) }
+            $previous = $state
+        } catch { }
     }
     [Threading.Thread]::Sleep(250)
 }
