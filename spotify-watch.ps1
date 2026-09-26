@@ -4,7 +4,8 @@
 # Uses .NET calls only, so it works even when launched from pwsh 7 with its module path.
 
 $mutex = [Threading.Mutex]::new($false, 'Local\claude-spotify-watch')
-if (-not $mutex.WaitOne(0)) { exit }
+# An abandoned mutex (previous watcher killed) throws, but the throw still hands us ownership
+try { if (-not $mutex.WaitOne(0)) { exit } } catch [Threading.AbandonedMutexException] { }
 
 [void][Reflection.Assembly]::Load('System.Runtime.WindowsRuntime, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089')
 [void][Reflection.Assembly]::Load('UIAutomationClient, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35')
@@ -46,25 +47,39 @@ public static class SpotifyAudio {
         [PreserveSig] int GetProcessId(out uint pid);
     }
 
+    static IMMDeviceEnumerator enumerator;
+
+    // Every COM object is released straight away: left to the GC, each one keeps a Core Audio
+    // session manager and its notification task alive in this process.
+    static void Release(object o) { if (o != null) Marshal.ReleaseComObject(o); }
+
     public static bool IsPlaying(int[] pids) {
-        var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
+        if (enumerator == null) enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
         IMMDeviceCollection devices;
-        enumerator.EnumAudioEndpoints(0 /* render */, 1 /* active */, out devices);
-        int deviceCount; devices.GetCount(out deviceCount);
-        Guid iid = typeof(IAudioSessionManager2).GUID;
-        for (int d = 0; d < deviceCount; d++) {
-            IMMDevice device; devices.Item(d, out device);
-            object manager; device.Activate(ref iid, 23, IntPtr.Zero, out manager);
-            IAudioSessionEnumerator sessions; ((IAudioSessionManager2)manager).GetSessionEnumerator(out sessions);
-            int sessionCount; sessions.GetCount(out sessionCount);
-            for (int s = 0; s < sessionCount; s++) {
-                IAudioSessionControl2 session; sessions.GetSession(s, out session);
-                uint pid; session.GetProcessId(out pid);
-                int state; session.GetState(out state);
-                if (state == 1 /* active */ && Array.IndexOf(pids, (int)pid) >= 0) return true;
+        if (enumerator.EnumAudioEndpoints(0 /* render */, 1 /* active */, out devices) != 0) return false;
+        try {
+            int deviceCount; devices.GetCount(out deviceCount);
+            Guid iid = typeof(IAudioSessionManager2).GUID;
+            for (int d = 0; d < deviceCount; d++) {
+                IMMDevice device = null; object manager = null; IAudioSessionEnumerator sessions = null;
+                try {
+                    if (devices.Item(d, out device) != 0) continue;
+                    if (device.Activate(ref iid, 23, IntPtr.Zero, out manager) != 0) continue;
+                    if (((IAudioSessionManager2)manager).GetSessionEnumerator(out sessions) != 0) continue;
+                    int sessionCount; sessions.GetCount(out sessionCount);
+                    for (int s = 0; s < sessionCount; s++) {
+                        IAudioSessionControl2 session;
+                        if (sessions.GetSession(s, out session) != 0) continue;
+                        try {
+                            uint pid; session.GetProcessId(out pid);
+                            int state; session.GetState(out state);
+                            if (state == 1 /* active */ && Array.IndexOf(pids, (int)pid) >= 0) return true;
+                        } finally { Release(session); }
+                    }
+                } finally { Release(sessions); Release(manager); Release(device); }
             }
-        }
-        return false;
+            return false;
+        } finally { Release(devices); }
     }
 }
 '@
@@ -78,8 +93,10 @@ $aRing = [char]0xE5
 $devicePattern = "^(?:Playing on|Listening on|Spelas upp p$aRing|Lyssnar p$aRing)\s+(.+)$"
 function Find-RemoteDevice {
     foreach ($process in [Diagnostics.Process]::GetProcessesByName('Spotify')) {
-        if ($process.MainWindowHandle -eq [IntPtr]::Zero) { continue }
-        $root = [Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
+        $handle = $process.MainWindowHandle
+        $process.Dispose()
+        if ($handle -eq [IntPtr]::Zero) { continue }
+        $root = [Windows.Automation.AutomationElement]::FromHandle($handle)
         foreach ($element in $root.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)) {
             if ($element.Current.Name -match $devicePattern) { return $element }
         }
@@ -96,14 +113,20 @@ $device   = ''
 $deviceElement = $null
 $nextDeviceSearch = [DateTime]::MinValue
 $tick     = 0
+$loop     = 0
+$manager  = $null
+$me       = [Diagnostics.Process]::GetCurrentProcess()
 
 while (([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($alive)).TotalSeconds -lt 30) {
     $state = ''
     try {
+        # While a call is stuck, the media service or Spotify is hung: wait for it instead of piling
+        # more calls on top, each of which parks a thread in this process until the other side answers.
         if ($pending -and -not $pending.IsCompleted) { throw 'previous WinRT call still pending' }
         $pending = $null
-        # A fresh manager each tick: a long-lived one keeps serving the track it first saw
-        $manager = Await ($managerType::RequestAsync()) $managerType
+        # One manager for the watcher's lifetime; it follows track changes. Creating one per tick
+        # left a manager and its background tasks behind every 250 ms.
+        if (-not $manager) { $manager = Await ($managerType::RequestAsync()) $managerType }
         foreach ($session in $manager.GetSessions()) {
             if ($session.SourceAppUserModelId -notlike '*Spotify*') { continue }
             $props    = Await ($session.TryGetMediaPropertiesAsync()) $propsType
@@ -114,7 +137,7 @@ while (([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($alive)).TotalSecond
             # Remote device name, empty while this PC plays it. Paused: no sound anywhere, so keep the last value.
             # Checked once a second (every 4th tick) to keep CPU low.
             if (($tick++ % 4) -eq 0) {
-                $pids = [int[]]@([Diagnostics.Process]::GetProcessesByName('Spotify') | ForEach-Object { $_.Id })
+                $pids = [int[]]@([Diagnostics.Process]::GetProcessesByName('Spotify') | ForEach-Object { $_.Id; $_.Dispose() })
                 if ($audio::IsPlaying($pids)) {
                     $device = ''
                     $deviceElement = $null
@@ -142,7 +165,17 @@ while (([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($alive)).TotalSecond
             ) | ForEach-Object { "$_" -replace '[\r\n]', ' ' }) -join "`n"
             break
         }
-    } catch { $state = '' }
+    } catch {
+        $state = ''
+        $manager = $null   # rebuilt once the pending call finishes, in case the media service restarted
+    }
+
+    # Safety net: a healthy watcher runs about 20 threads. If a hung service still makes them pile up,
+    # exit; the status line starts a fresh watcher on its next run.
+    if ((++$loop % 40) -eq 0) {
+        $me.Refresh()
+        if ($me.Threads.Count -gt 150) { break }
+    }
 
     if ($state -ne $previous) {
         try {
