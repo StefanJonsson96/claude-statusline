@@ -108,7 +108,7 @@ if ($null -ne $week.used_percentage) { $segments.Add("`u{1F4CA} 7d: $(Format-Lim
 # Resume command
 if ($data.session_id) { $segments.Add("`u{1F504} cc -r $($data.session_id)") }
 
-# Spotify now playing (state comes from spotify-watch.ps1, started here when it isn't running)
+# Spotify now playing (state comes from spotify-watch.cs, started here when it isn't running)
 $watcher = $null
 $spotify = $null
 $nowPlaying = $null
@@ -120,7 +120,7 @@ if ([Threading.Mutex]::TryOpenExisting('Local\claude-spotify-watch', [ref]$watch
 }
 else {
     # No watcher means the cache is left over from an earlier run; skip it until the new watcher writes
-    Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$(Join-Path $PSScriptRoot 'spotify-watch.ps1')`""
+    Start-Process dotnet -WindowStyle Hidden -ArgumentList 'run', "`"$(Join-Path $PSScriptRoot 'spotify-watch.cs')`""
 }
 if ($spotify.Count -ge 6) {
     $status, $artist, $title = $spotify[0..2]

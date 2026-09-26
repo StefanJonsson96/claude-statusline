@@ -41,13 +41,14 @@ It reads what Windows already knows, so there is no Spotify login or API key. Th
 gets the first artist and no playlist name.
 
 The device name comes from the "Playing on ..." text in the Spotify window, matched in English and Swedish.
-For another app language, add its prefix to `$devicePattern` in `spotify-watch.ps1`. Whether this PC plays it
+For another app language, add its prefix to `Pattern` in `spotify-watch.cs`. Whether this PC plays it
 is detected from Windows audio output, so that part works in any language.
 
 ## Requirements
 
 - Windows with [Windows Terminal](https://aka.ms/terminal)
-- [PowerShell 7](https://aka.ms/powershell) (`pwsh`) and Windows PowerShell 5.1 (built into Windows)
+- [PowerShell 7](https://aka.ms/powershell) (`pwsh`)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) for the Spotify line (the watcher is a C# file run with `dotnet run`)
 - Git
 - A [Nerd Font](https://www.nerdfonts.com/font-downloads) set as the Windows Terminal font. Tested with CaskaydiaMono Nerd Font.
 - Spotify desktop app (optional)
@@ -76,13 +77,19 @@ Because the setting points at this folder, `git pull` updates the status line.
 
 ## How the Spotify line works
 
-`statusline.ps1` starts `spotify-watch.ps1` in a hidden Windows PowerShell 5.1 process (PowerShell 7 can't
-read the Windows media session). The watcher checks Spotify four times a second, checks which device plays it once a
-second, and writes the result to `%TEMP%\claude-spotify.txt`; the status line reads that file and counts the time forward itself. The watcher
-exits 30 seconds after the status line stops running.
+`statusline.ps1` starts `spotify-watch.cs` with `dotnet run` in a hidden window. The first start compiles it, which
+takes a few seconds; later starts reuse the cached build. The watcher listens for track and playback changes from the
+Windows media session (with a refresh every 5 seconds in case Windows drops an event), checks which device plays it
+once a second, and writes the result to `%TEMP%\claude-spotify.txt`; the status line reads that file and counts the
+time forward itself. The watcher exits 30 seconds after the status line stops running.
 
-It seems to use 0.1-0.3% CPU and around 35-40 MB RAM (Intel Core i5-13400F, 10 cores / 16 threads, 32 GB DDR5-4800).
-In Task Manager it's the **Windows PowerShell** background process; on the Details tab, turn on the Command line column to spot `spotify-watch.ps1`.
+If Spotify or the Windows media service hangs, the watcher waits for its one pending call instead of sending more,
+and exits if it ever passes 150 threads (the status line then starts a fresh one). Once a minute it logs its own
+threads and memory, Spotify's, and those of the Windows now-playing service (NPSMSvc) to
+`%TEMP%\claude-spotify-watch.log`, so a slow build-up shows up there.
+
+It uses under 0.1% CPU. In Task Manager it's **spotify-watch** (about 13 MB private memory) plus its **dotnet** host
+process (about 22 MB), measured on an Intel Core i5-13400F.
 
 ## Alignment
 
