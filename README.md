@@ -96,8 +96,9 @@ process (about 22 MB), measured on an Intel Core i5-13400F.
 
 `statusline.ps1` runs `battery.cs` with `dotnet run` at most once a minute. It asks each supported device for its
 battery level over USB and writes the answers to `%TEMP%\claude-battery.txt`, so SteelSeries GG never has to be opened
-(it can keep running in the background). A run takes about a quarter of a second once built. A device that is off or
-unplugged is left out, and nothing shows if the readings are more than 5 minutes old.
+(it can keep running in the background). A run takes about a quarter of a second once built. A device that doesn't
+answer (the mouse while it is off) keeps its last reading, so the icon never flickers. An unplugged device, or the
+headset when it reports itself off, is left out, and nothing shows if the readings are more than 5 minutes old.
 
 Supported devices, with the commands taken from [HeadsetControl](https://github.com/Sapd/HeadsetControl) and
 [rivalcfg](https://github.com/flozz/rivalcfg):

@@ -5,8 +5,9 @@
 // device for its battery level over USB, writes one line per answering device to %TEMP%\claude-battery.txt
 // ("headset 87 0": kind, percent, 1 while charging) and exits. SteelSeries GG can keep running alongside it.
 //
-// The commands come from HeadsetControl (Arctis Nova 7) and rivalcfg (Rival 3 Wireless). A device that is off,
-// unplugged or unsupported is left out of the file.
+// The commands come from HeadsetControl (Arctis Nova 7) and rivalcfg (Rival 3 Wireless). A device that doesn't
+// answer (the mouse while it is off) keeps its last line; an unplugged device, or the headset when it reports
+// itself off, is left out of the file.
 
 using HidSharp;
 
@@ -26,13 +27,21 @@ Device[] devices =
     new("mouse", 0x1830, [0xAA, 0x01], reply => new Reading(reply[0], reply[2] != 0)),
 ];
 
+var path = Path.Combine(Path.GetTempPath(), "claude-battery.txt");
+
+// The last line written for each device, kept when the device doesn't answer this time
+var previous = new Dictionary<string, string>();
+try { foreach (var line in File.ReadAllLines(path)) previous[line.Split(' ')[0]] = line; }
+catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+
 var lines = new List<string>();
 foreach (var device in devices)
 {
-    if (Read(device) is { Percent: >= 0 and <= 100 } r) lines.Add($"{device.Kind} {r.Percent} {(r.Charging ? 1 : 0)}");
+    var r = Read(device);
+    if (r is { Percent: >= 0 and <= 100 }) lines.Add($"{device.Kind} {r.Percent} {(r.Charging ? 1 : 0)}");
+    else if (r != Reading.Off && r != Reading.Unplugged && previous.TryGetValue(device.Kind, out var last)) lines.Add(last);
 }
 
-var path = Path.Combine(Path.GetTempPath(), "claude-battery.txt");
 File.WriteAllLines(path + ".tmp", lines);
 File.Move(path + ".tmp", path, overwrite: true);
 
@@ -42,7 +51,7 @@ static Reading? Read(Device device)
 {
     var hid = DeviceList.Local.GetHidDevices(0x1038, device.ProductId)
         .FirstOrDefault(d => d.DevicePath.Contains("&mi_03", StringComparison.OrdinalIgnoreCase));
-    if (hid is null) return null;
+    if (hid is null) return Reading.Unplugged;
     for (var attempt = 0; attempt < 3; attempt++)
     {
         try
@@ -68,6 +77,7 @@ static Reading? Read(Device device)
 record Reading(int Percent, bool Charging)
 {
     public static readonly Reading Off = new(-1, false);
+    public static readonly Reading Unplugged = new(-2, false);
 }
 
 record Device(string Kind, int ProductId, byte[] Command, Func<byte[], Reading?> Parse);
