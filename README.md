@@ -3,7 +3,7 @@
 A PowerShell 7 status line for [Claude Code](https://code.claude.com) on Windows, with a now-playing line for Spotify.
 
 ```
-📁 my-repo  [branch] main ≡ ~2 ?1  ☁️ My Subscription  🕐 21:58:56  🧠 ctx: 11%  🔋 5h: 47% (0h50m)  📊 7d: 13% (3d7h)  🔄 cc -r <session id>
+📁 my-repo  [branch] main ≡ ~2 ?1  ☁️ My Subscription  🕐 21:58:56  🧠 ctx: 11%  🔋 5h: 47% (0h50m)  📊 7d: 13% (3d7h)  🎧 87%  🖱️ 64%  🔄 cc -r <session id>
 [spotify]  KAROL G - LATINA FOREVA 1:42/2:39
 ```
 
@@ -22,6 +22,7 @@ A PowerShell 7 status line for [Claude Code](https://code.claude.com) on Windows
 | 🧠 | Context window used |
 | 🔋 | 5-hour usage, with time until reset |
 | 📊 | 7-day usage, with time until reset |
+| 🎧 🖱️ | SteelSeries headset and mouse battery, red at 20% or less, ⚡ while charging (see [Battery](#battery)) |
 | 🔄 | `cc -r <session id>` to resume this conversation |
 
 The usage segments only show for Claude.ai Pro and Max accounts, after the first reply in a session.
@@ -48,7 +49,7 @@ is detected from Windows audio output, so that part works in any language.
 
 - Windows with [Windows Terminal](https://aka.ms/terminal)
 - [PowerShell 7](https://aka.ms/powershell) (`pwsh`)
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) for the Spotify line (the watcher is a C# file run with `dotnet run`)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) for the Spotify and battery segments (C# files run with `dotnet run`)
 - Git
 - A [Nerd Font](https://www.nerdfonts.com/font-downloads) set as the Windows Terminal font. Tested with CaskaydiaMono Nerd Font.
 - Spotify desktop app (optional)
@@ -90,6 +91,25 @@ threads and memory, Spotify's, and those of the Windows now-playing service (NPS
 
 It uses under 0.1% CPU. In Task Manager it's **spotify-watch** (about 13 MB private memory) plus its **dotnet** host
 process (about 22 MB), measured on an Intel Core i5-13400F.
+
+## Battery
+
+`statusline.ps1` runs `battery.cs` with `dotnet run` at most once a minute. It asks each supported device for its
+battery level over USB and writes the answers to `%TEMP%\claude-battery.txt`, so SteelSeries GG never has to be opened
+(it can keep running in the background). A run takes about a quarter of a second once built. A device that doesn't
+answer (the mouse while it is off) keeps its last reading, so the icon never flickers. An unplugged device, or the
+headset when it reports itself off, is left out, and nothing shows if the readings are more than 5 minutes old.
+
+Supported devices, with the commands taken from [HeadsetControl](https://github.com/Sapd/HeadsetControl) and
+[rivalcfg](https://github.com/flozz/rivalcfg):
+
+| Device | USB id |
+| --- | --- |
+| Arctis Nova 7 Gen 2 | `1038:227E` |
+| Rival 3 Wireless (2.4 GHz) | `1038:1830` |
+
+To add another device, add an entry to `devices` in `battery.cs` with its product id, battery command and reply
+format from one of those projects.
 
 ## Alignment
 

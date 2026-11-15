@@ -105,6 +105,27 @@ if ($null -ne $five.used_percentage) { $segments.Add("`u{1F50B} 5h: $(Format-Lim
 $week = $data.rate_limits.seven_day
 if ($null -ne $week.used_percentage) { $segments.Add("`u{1F4CA} 7d: $(Format-Limit $week)") }
 
+# Headset and mouse battery (battery.cs reads them over USB; started here at most once a minute)
+$batteryPath    = Join-Path $env:TEMP 'claude-battery.txt'
+$batteryStarted = Join-Path $env:TEMP 'claude-battery.started'
+# A missing file reads as 1601, so the first run starts the reader straight away
+if (([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($batteryStarted)).TotalSeconds -ge 60) {
+    try { [IO.File]::WriteAllBytes($batteryStarted, [byte[]]@()) } catch { }
+    Start-Process dotnet -WindowStyle Hidden -ArgumentList 'run', "`"$(Join-Path $PSScriptRoot 'battery.cs')`""
+}
+# Skip readings older than 5 minutes (the reader stopped running)
+if (([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($batteryPath)).TotalMinutes -lt 5) {
+    $batteryIcons = @{ headset = "`u{1F3A7}"; mouse = "`u{1F5B1}`u{FE0F}" }
+    $batteryLines = try { [IO.File]::ReadAllLines($batteryPath) } catch { @() }
+    foreach ($line in $batteryLines) {
+        $kind, $percent, $charging = $line -split ' '
+        if (-not $batteryIcons[$kind]) { continue }
+        $text = if ([int]$percent -le 20) { "`e[31m$percent%`e[0m" } else { "$percent%" }
+        if ($charging -eq '1') { $text += "`u{26A1}" }
+        $segments.Add("$($batteryIcons[$kind]) $text")
+    }
+}
+
 # Resume command
 if ($data.session_id) { $segments.Add("`u{1F504} cc -r $($data.session_id)") }
 
