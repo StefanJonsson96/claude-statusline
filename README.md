@@ -78,7 +78,8 @@ Because the setting points at this folder, `git pull` updates the status line.
 
 ## How the Spotify line works
 
-`statusline.ps1` starts `spotify-watch.cs` with `dotnet run` in a hidden window. The first start compiles it, which
+`statusline.ps1` starts `spotify-watch.cs` with `dotnet run` in a hidden window when no watcher is running, at most
+once a minute so a slow start never stacks up several `dotnet run` processes. The first start compiles it, which
 takes a few seconds; later starts reuse the cached build. The watcher listens for track and playback changes from the
 Windows media session (with a refresh every 5 seconds in case Windows drops an event), checks which device plays it
 once a second, and writes the result to `%TEMP%\claude-spotify.txt`; the status line reads that file and counts the

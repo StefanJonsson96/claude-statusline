@@ -18,6 +18,17 @@ function Format-Limit($window) {
     $text
 }
 
+# Starts <name>.cs from this folder with `dotnet run` in a hidden window, at most once a minute across all Claude Code
+# sessions. A start takes seconds before the helper is up (longer on a busy PC or when it needs a rebuild), and the
+# status line runs every 2 seconds, so the limit keeps a slow start from turning into a pile of `dotnet run` processes.
+function Start-Helper($name) {
+    $started = Join-Path $env:TEMP "claude-$name.started"
+    # A missing file reads as 1601, so the first run starts the helper straight away
+    if (([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($started)).TotalSeconds -lt 60) { return }
+    try { [IO.File]::WriteAllBytes($started, [byte[]]@()) } catch { }
+    Start-Process dotnet -WindowStyle Hidden -ArgumentList 'run', "`"$(Join-Path $PSScriptRoot "$name.cs")`""
+}
+
 # Current folder
 $cwd = if ($data.workspace.current_dir) { $data.workspace.current_dir } else { $data.cwd }
 if ($cwd) { $segments.Add("`u{1F4C1} $(Split-Path $cwd -Leaf)") }
@@ -105,14 +116,9 @@ if ($null -ne $five.used_percentage) { $segments.Add("`u{1F50B} 5h: $(Format-Lim
 $week = $data.rate_limits.seven_day
 if ($null -ne $week.used_percentage) { $segments.Add("`u{1F4CA} 7d: $(Format-Limit $week)") }
 
-# Headset and mouse battery (battery.cs reads them over USB; started here at most once a minute)
-$batteryPath    = Join-Path $env:TEMP 'claude-battery.txt'
-$batteryStarted = Join-Path $env:TEMP 'claude-battery.started'
-# A missing file reads as 1601, so the first run starts the reader straight away
-if (([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($batteryStarted)).TotalSeconds -ge 60) {
-    try { [IO.File]::WriteAllBytes($batteryStarted, [byte[]]@()) } catch { }
-    Start-Process dotnet -WindowStyle Hidden -ArgumentList 'run', "`"$(Join-Path $PSScriptRoot 'battery.cs')`""
-}
+# Headset and mouse battery (battery.cs reads them over USB and exits, so it's started again each minute)
+$batteryPath = Join-Path $env:TEMP 'claude-battery.txt'
+Start-Helper battery
 # Skip readings older than 5 minutes (the reader stopped running)
 if (([DateTime]::UtcNow - [IO.File]::GetLastWriteTimeUtc($batteryPath)).TotalMinutes -lt 5) {
     $batteryIcons = @{ headset = "`u{1F3A7}"; mouse = "`u{1F5B1}`u{FE0F}" }
@@ -141,7 +147,7 @@ if ([Threading.Mutex]::TryOpenExisting('Local\claude-spotify-watch', [ref]$watch
 }
 else {
     # No watcher means the cache is left over from an earlier run; skip it until the new watcher writes
-    Start-Process dotnet -WindowStyle Hidden -ArgumentList 'run', "`"$(Join-Path $PSScriptRoot 'spotify-watch.cs')`""
+    Start-Helper spotify-watch
 }
 if ($spotify.Count -ge 6) {
     $status, $artist, $title = $spotify[0..2]
